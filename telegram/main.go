@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kittenbark/nanodb/jsondb"
 	"github.com/kittenbark/tg"
 	"io"
 	"net/http"
 	"os"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -20,12 +22,30 @@ var (
 	Endpoint          = "http://localhost:6969"
 	EndpointImageNsfw = "/v1/image_nsfw"
 	EndpointHealth    = "/health"
+	DB                *jsondb.Cached[ChatInfo]
 )
+
+type ChatInfo struct {
+	Id        int64   `json:"id"`
+	Threshold float64 `json:"threshold"`
+	Comments  bool    `json:"comments,omitempty"`
+	Debug     bool    `json:"debug,omitempty"`
+}
 
 func init() {
 	if endpoint, ok := os.LookupEnv("MODESTY_ENDPOINT"); ok {
 		Endpoint = endpoint
 	}
+
+	cache, ok := os.LookupEnv("MODESTY_TG")
+	if !ok {
+		cache = "./chats.json"
+	}
+	db, err := jsondb.New[ChatInfo](cache)
+	if err != nil {
+		panic(err)
+	}
+	DB = db
 }
 
 type Action func(ctx context.Context, msg *tg.Message, filename string) error
@@ -89,6 +109,18 @@ func EndpointHealthy() error {
 }
 
 func WeightAndTagAdmin(ctx context.Context, msg *tg.Message, filename string) error {
+	info, ok, err := DB.TryGet(strconv.FormatInt(msg.Chat.Id, 10))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
+	if info.Comments && msg.ReplyToMessage == nil {
+		return nil
+	}
+
 	start := time.Now()
 	nsfw, err := ImageNsfw(ctx, filename)
 	if err != nil {
@@ -98,6 +130,11 @@ func WeightAndTagAdmin(ctx context.Context, msg *tg.Message, filename string) er
 		if txt := strings.ToLower(msg.TextOrCaption()); !strings.Contains(txt, "nsfw") && !strings.Contains(txt, "нсфв") {
 			return nil
 		}
+	}
+
+	if !info.Debug && nsfw.Certainty >= info.Threshold {
+		_, err = tg.DeleteMessage(ctx, msg.Chat.Id, msg.MessageId)
+		return err
 	}
 
 	_, err = tg.SendMessage(
@@ -153,6 +190,51 @@ func OnAnimation(ctx context.Context, msg *tg.Message) (string, error) {
 	return msg.Animation.Thumbnail.DownloadTemp(ctx)
 }
 
+func FilterActivatedChats() tg.FilterFunc {
+	return tg.All(tg.OnMessage, func(ctx context.Context, upd *tg.Update) bool {
+		_, ok, err := DB.TryGet(strconv.FormatInt(upd.Message.Chat.Id, 10))
+		if err != nil {
+			return false
+		}
+		return ok
+	})
+}
+
+func HandlerActive() tg.HandlerFunc {
+	return func(ctx context.Context, upd *tg.Update) error {
+		msg := upd.Message
+		args := strings.Fields(msg.TextOrCaption())
+		if len(args) < 2 {
+			_, err := tg.SendMessage(ctx, msg.Chat.Id, "usage: /activate 0.9", &tg.OptSendMessage{ReplyParameters: tg.AsReplyTo(msg)})
+			return err
+		}
+
+		info := ChatInfo{Id: msg.Chat.Id}
+		threshold, err := strconv.ParseFloat(args[1], 64)
+		if err != nil || threshold < 0 || threshold > 1 {
+			_, err := tg.SendMessage(ctx, msg.Chat.Id, "usage: /activate 0.9", &tg.OptSendMessage{ReplyParameters: tg.AsReplyTo(msg)})
+			return err
+		}
+		info.Threshold = threshold
+
+		if len(args) > 2 {
+			if comments, err := strconv.ParseBool(args[2]); err != nil {
+				info.Comments = comments
+			}
+		}
+		if len(args) > 3 {
+			if debug, err := strconv.ParseBool(args[2]); err != nil {
+				info.Debug = debug
+			}
+		}
+
+		if err = DB.Add(strconv.FormatInt(msg.Chat.Id, 10), info); err != nil {
+			return err
+		}
+		return nil
+	}
+}
+
 func main() {
 	if err := EndpointHealthy(); err != nil {
 		panic(err)
@@ -161,6 +243,8 @@ func main() {
 	tg.NewFromEnv().
 		OnError(tg.OnErrorLog).
 		Command("/start", tg.CommonTextReply("modesty is virtue")).
+		Command("/activate", HandlerActive()).
+		Filter(FilterActivatedChats()).
 		Branch(tg.OnPhoto, Handler(OnPhoto, WeightAndTagAdmin)).
 		Branch(tg.OnVideo, Handler(OnVideo, WeightAndTagAdmin)).
 		Branch(tg.OnVideoNote, Handler(OnVideoNote, WeightAndTagAdmin)).
