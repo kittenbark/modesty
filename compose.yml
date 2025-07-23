@@ -1,0 +1,45 @@
+services:
+  model_server:
+    build:
+      context: ./nsfw_detection_model
+    volumes:
+      - "./nsfw_detection_model/models/:/app/models/"
+    networks:
+      - internal_network
+    expose:
+      - "6969"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:6969/health" ]
+      interval: 60s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: "1G"
+
+  telegram:
+    build:
+      context: .
+      dockerfile: ./telegram/Dockerfile
+    environment:
+      - KITTENBARK_TG_TOKEN
+      - MODESTY_ENDPOINT=http://model_server:6969
+    env_file:
+      - .env
+    networks:
+      - internal_network
+    depends_on:
+      model_server:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "64MB"
+
+networks:
+  internal_network:
+    driver: bridge
