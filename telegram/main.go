@@ -12,6 +12,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -94,7 +95,9 @@ func WeightAndTagAdmin(ctx context.Context, msg *tg.Message, filename string) er
 		return err
 	}
 	if !nsfw.IsNsfw {
-		return nil
+		if txt := strings.ToLower(msg.TextOrCaption()); !strings.Contains(txt, "nsfw") && !strings.Contains(txt, "нсфв") {
+			return nil
+		}
 	}
 
 	_, err = tg.SendMessage(
