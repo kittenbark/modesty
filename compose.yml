@@ -17,8 +17,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
-          memory: "1G"
+          cpus: "4"
+          memory: "2G"
 
   telegram:
     build:
