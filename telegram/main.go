@@ -223,7 +223,7 @@ func HandlerActive() tg.HandlerFunc {
 			}
 		}
 		if len(args) > 3 {
-			if debug, err := strconv.ParseBool(args[2]); err != nil {
+			if debug, err := strconv.ParseBool(args[3]); err != nil {
 				info.Debug = debug
 			}
 		}
