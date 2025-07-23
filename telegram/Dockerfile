@@ -13,6 +13,8 @@ RUN go build -o main ./cmd
 
 FROM alpine:${VERSION_ALPINE}
 
+WORKDIR /app
+
 RUN apk --no-cache add ca-certificates tzdata && \
     update-ca-certificates
 

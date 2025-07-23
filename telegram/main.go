@@ -218,12 +218,12 @@ func HandlerActive() tg.HandlerFunc {
 		info.Threshold = threshold
 
 		if len(args) > 2 {
-			if comments, err := strconv.ParseBool(args[2]); err != nil {
+			if comments, err := strconv.ParseBool(args[2]); err == nil {
 				info.Comments = comments
 			}
 		}
 		if len(args) > 3 {
-			if debug, err := strconv.ParseBool(args[3]); err != nil {
+			if debug, err := strconv.ParseBool(args[3]); err == nil {
 				info.Debug = debug
 			}
 		}
