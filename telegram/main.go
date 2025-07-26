@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/kittenbark/smoldb"
@@ -132,8 +131,6 @@ func OnAnimation(ctx context.Context, msg *tg.Message) (string, error) {
 func FilterActivatedChats() tg.FilterFunc {
 	return tg.All(tg.OnMessage, func(ctx context.Context, upd *tg.Update) bool {
 		if _, err := Chats.Get(upd.Message.Chat.Id); err != nil {
-			fmt.Printf("%v %v\n", upd.Message.Chat.Id, Chats.Keys())
-			println(err.Error())
 			return false
 		}
 		return true
@@ -212,10 +209,5 @@ func main() {
 		Branch(tg.OnVideo, Handler(OnVideo, WeightAndTagAdmin)).
 		Branch(tg.OnVideoNote, Handler(OnVideoNote, WeightAndTagAdmin)).
 		Branch(tg.OnAnimation, Handler(OnAnimation, WeightAndTagAdmin)).
-		Default(func(ctx context.Context, upd *tg.Update) error {
-			data, _ := json.MarshalIndent(upd.Message, "", "  ")
-			println(string(data))
-			return nil
-		}).
 		Start()
 }
