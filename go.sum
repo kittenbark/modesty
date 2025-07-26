@@ -1,4 +1,6 @@
 github.com/kittenbark/smoldb v0.0.0-20250726054537-bbe68441364a h1:yzhxZBr9lz3BemtDzgCCz51NMPzbU8rbIDB8YRHECDo=
 github.com/kittenbark/smoldb v0.0.0-20250726054537-bbe68441364a/go.mod h1:2kbNcs3wknNu3MPNqwzLwtnFwLdvmuETalOzIEBKVDk=
+github.com/kittenbark/smoldb v0.0.0-20250726082350-5bce3b8b3e88 h1:Zve3jAW4w7bRc1iYYU898j8fU0GAUdXAA3rBhgbwxOQ=
+github.com/kittenbark/smoldb v0.0.0-20250726082350-5bce3b8b3e88/go.mod h1:2kbNcs3wknNu3MPNqwzLwtnFwLdvmuETalOzIEBKVDk=
 github.com/kittenbark/tg v0.0.0-20250525113243-80f6ee03d695 h1:AhV+ERmktvHxJT1u7zajdv+dYgH6s7eXT0N6D/rsRvY=
 github.com/kittenbark/tg v0.0.0-20250525113243-80f6ee03d695/go.mod h1:n84Rl0h0IaG+pLij7L9PSwErJCbG755uoqf3pLhw4BY=

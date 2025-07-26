@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/kittenbark/smoldb"
@@ -35,7 +36,7 @@ type ChatInfo struct {
 
 func init() {
 	var err error
-	Chats, err = smoldb.New[int64, ChatInfo](env("MODESTY_TG_CHATS", "./chats.json"))
+	Chats, err = smoldb.New[int64, ChatInfo](env("MODESTY_TG_CHATS", "./modesty_chats.yaml"))
 	if err != nil {
 		panic(err)
 	}
@@ -66,8 +67,9 @@ func WeightAndTagAdmin(ctx context.Context, msg *tg.Message, filename string) er
 	}
 
 	if !info.Debug && nsfw.Certainty >= info.Threshold {
-		_, err = tg.DeleteMessage(ctx, msg.Chat.Id, msg.MessageId)
-		return err
+		if _, err = tg.DeleteMessage(ctx, msg.Chat.Id, msg.MessageId); err != nil {
+			return err
+		}
 	}
 
 	_, err = tg.SendMessage(
@@ -81,8 +83,12 @@ func WeightAndTagAdmin(ctx context.Context, msg *tg.Message, filename string) er
 		),
 		&tg.OptSendMessage{
 			DisableNotification: true,
-			ReplyParameters:     tg.AsReplyTo(msg),
-			ParseMode:           tg.ParseModeMarkdownV2,
+			ReplyParameters: &tg.ReplyParameters{
+				MessageId:                msg.MessageId,
+				ChatId:                   msg.Chat.Id,
+				AllowSendingWithoutReply: true,
+			},
+			ParseMode: tg.ParseModeMarkdownV2,
 		},
 	)
 	return err
@@ -125,11 +131,12 @@ func OnAnimation(ctx context.Context, msg *tg.Message) (string, error) {
 
 func FilterActivatedChats() tg.FilterFunc {
 	return tg.All(tg.OnMessage, func(ctx context.Context, upd *tg.Update) bool {
-		_, ok, err := Chats.TryGet(upd.Message.Chat.Id)
-		if err != nil {
+		if _, err := Chats.Get(upd.Message.Chat.Id); err != nil {
+			fmt.Printf("%v %v\n", upd.Message.Chat.Id, Chats.Keys())
+			println(err.Error())
 			return false
 		}
-		return ok
+		return true
 	})
 }
 
@@ -179,7 +186,8 @@ func EvaluationRequestAsOriginal(ctx context.Context, upd *tg.Update) bool {
 	case msg.Photo != nil || msg.Animation != nil || msg.Voice != nil || msg.VideoNote != nil:
 	case !evaluationRequest(msg):
 	default:
-		upd.Message = upd.Message.ReplyToMessage
+		upd.Message = msg.ReplyToMessage
+		upd.Message.Caption += "\nnsfw?"
 	}
 	return true
 }
@@ -199,10 +207,15 @@ func main() {
 		Scheduler().
 		Command("/start", tg.CommonTextReply("modesty is virtue")).
 		Command("/activate", HandlerActive()).
-		Filter(FilterActivatedChats(), EvaluationRequestAsOriginal).
+		Filter(tg.OnMessage, FilterActivatedChats(), EvaluationRequestAsOriginal).
 		Branch(tg.OnPhoto, Handler(OnPhoto, WeightAndTagAdmin)).
 		Branch(tg.OnVideo, Handler(OnVideo, WeightAndTagAdmin)).
 		Branch(tg.OnVideoNote, Handler(OnVideoNote, WeightAndTagAdmin)).
 		Branch(tg.OnAnimation, Handler(OnAnimation, WeightAndTagAdmin)).
+		Default(func(ctx context.Context, upd *tg.Update) error {
+			data, _ := json.MarshalIndent(upd.Message, "", "  ")
+			println(string(data))
+			return nil
+		}).
 		Start()
 }

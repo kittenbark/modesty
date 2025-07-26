@@ -2,3 +2,6 @@
 .DS_Storage
 models/
 .env
+.venv
+*yaml
+*json
