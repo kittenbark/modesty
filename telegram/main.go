@@ -1,15 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/kittenbark/nanodb/jsondb"
+	"github.com/kittenbark/smoldb"
 	"github.com/kittenbark/tg"
-	"io"
-	"net/http"
+	"modesty/telegram/client"
 	"os"
 	"reflect"
 	"runtime"
@@ -19,11 +16,15 @@ import (
 )
 
 var (
-	Endpoint          = "http://localhost:6969"
-	EndpointImageNsfw = "/v1/image_nsfw"
-	EndpointHealth    = "/health"
-	DB                *jsondb.Cached[ChatInfo]
+	Chats *smoldb.Smol[int64, ChatInfo]
 )
+
+func env(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
 
 type ChatInfo struct {
 	Id        int64   `json:"id"`
@@ -33,83 +34,17 @@ type ChatInfo struct {
 }
 
 func init() {
-	if endpoint, ok := os.LookupEnv("MODESTY_ENDPOINT"); ok {
-		Endpoint = endpoint
-	}
-
-	cache, ok := os.LookupEnv("MODESTY_TG")
-	if !ok {
-		cache = "./chats.json"
-	}
-	db, err := jsondb.New[ChatInfo](cache)
+	var err error
+	Chats, err = smoldb.New[int64, ChatInfo](env("MODESTY_TG_CHATS", "./chats.json"))
 	if err != nil {
 		panic(err)
 	}
-	DB = db
 }
 
 type Action func(ctx context.Context, msg *tg.Message, filename string) error
 
-type Response struct {
-	IsNsfw    bool    `json:"nsfw"`
-	Certainty float64 `json:"certainty"`
-}
-
-func ImageNsfw(ctx context.Context, filename string) (result *Response, err error) {
-	type Request struct {
-		ImageData []byte `json:"image_data"`
-	}
-	req := new(Request)
-
-	if req.ImageData, err = os.ReadFile(filename); err != nil {
-		return nil, err
-	}
-	reqData, err := json.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-
-	reqHttp, err := http.NewRequestWithContext(ctx, "POST", Endpoint+EndpointImageNsfw, bytes.NewBuffer(reqData))
-	if err != nil {
-		return nil, err
-	}
-
-	respHttp, err := http.DefaultClient.Do(reqHttp)
-	if err != nil {
-		return nil, err
-	}
-	defer func(body io.ReadCloser) { _ = body.Close() }(respHttp.Body)
-	if respHttp.StatusCode != 200 {
-		return nil, errors.New(respHttp.Status)
-	}
-
-	var resp Response
-	if err := json.NewDecoder(respHttp.Body).Decode(&resp); err != nil {
-		return nil, err
-	}
-	return &resp, nil
-}
-
-func EndpointHealthy() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, "GET", Endpoint+EndpointHealth, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return errors.New(resp.Status)
-	}
-	return nil
-}
-
 func WeightAndTagAdmin(ctx context.Context, msg *tg.Message, filename string) error {
-	info, ok, err := DB.TryGet(strconv.FormatInt(msg.Chat.Id, 10))
+	info, ok, err := Chats.TryGet(msg.Chat.Id)
 	if err != nil {
 		return err
 	}
@@ -122,14 +57,12 @@ func WeightAndTagAdmin(ctx context.Context, msg *tg.Message, filename string) er
 	}
 
 	start := time.Now()
-	nsfw, err := ImageNsfw(ctx, filename)
+	nsfw, err := client.ImageNsfw(ctx, filename)
 	if err != nil {
 		return err
 	}
-	if !nsfw.IsNsfw {
-		if txt := strings.ToLower(msg.TextOrCaption()); !strings.Contains(txt, "nsfw") && !strings.Contains(txt, "нсфв") {
-			return nil
-		}
+	if !nsfw.IsNsfw && !evaluationRequest(msg) {
+		return nil
 	}
 
 	if !info.Debug && nsfw.Certainty >= info.Threshold {
@@ -192,7 +125,7 @@ func OnAnimation(ctx context.Context, msg *tg.Message) (string, error) {
 
 func FilterActivatedChats() tg.FilterFunc {
 	return tg.All(tg.OnMessage, func(ctx context.Context, upd *tg.Update) bool {
-		_, ok, err := DB.TryGet(strconv.FormatInt(upd.Message.Chat.Id, 10))
+		_, ok, err := Chats.TryGet(upd.Message.Chat.Id)
 		if err != nil {
 			return false
 		}
@@ -205,7 +138,7 @@ func HandlerActive() tg.HandlerFunc {
 		msg := upd.Message
 		args := strings.Fields(msg.TextOrCaption())
 		if len(args) < 2 {
-			_, err := tg.SendMessage(ctx, msg.Chat.Id, "usage: /activate 0.9", &tg.OptSendMessage{ReplyParameters: tg.AsReplyTo(msg)})
+			_, err := tg.SendMessage(ctx, msg.Chat.Id, "usage: /activate <threshold> <comments> <debug>", &tg.OptSendMessage{ReplyParameters: tg.AsReplyTo(msg)})
 			return err
 		}
 
@@ -228,27 +161,48 @@ func HandlerActive() tg.HandlerFunc {
 			}
 		}
 
-		if err = DB.Add(strconv.FormatInt(msg.Chat.Id, 10), info); err != nil {
+		if err = Chats.Set(msg.Chat.Id, info); err != nil {
 			return err
 		}
 		return nil
 	}
 }
 
+func EvaluationRequestAsOriginal(ctx context.Context, upd *tg.Update) bool {
+	if upd.Message == nil {
+		return true
+	}
+
+	msg := upd.Message
+	switch {
+	case msg.ReplyToMessage == nil:
+	case msg.Photo != nil || msg.Animation != nil || msg.Voice != nil || msg.VideoNote != nil:
+	case !evaluationRequest(msg):
+	default:
+		upd.Message = upd.Message.ReplyToMessage
+	}
+	return true
+}
+
+func evaluationRequest(msg *tg.Message) bool {
+	txt := strings.ToLower(msg.TextOrCaption())
+	return strings.Contains(txt, "nsfw") || strings.Contains(txt, "нсфв")
+}
+
 func main() {
-	if err := EndpointHealthy(); err != nil {
+	if err := client.EndpointHealthy(); err != nil {
 		panic(err)
 	}
 
 	tg.NewFromEnv().
 		OnError(tg.OnErrorLog).
+		Scheduler().
 		Command("/start", tg.CommonTextReply("modesty is virtue")).
 		Command("/activate", HandlerActive()).
-		Filter(FilterActivatedChats()).
+		Filter(FilterActivatedChats(), EvaluationRequestAsOriginal).
 		Branch(tg.OnPhoto, Handler(OnPhoto, WeightAndTagAdmin)).
 		Branch(tg.OnVideo, Handler(OnVideo, WeightAndTagAdmin)).
 		Branch(tg.OnVideoNote, Handler(OnVideoNote, WeightAndTagAdmin)).
 		Branch(tg.OnAnimation, Handler(OnAnimation, WeightAndTagAdmin)).
-		Scheduler().
 		Start()
 }

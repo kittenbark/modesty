@@ -27,11 +27,12 @@ services:
     environment:
       - KITTENBARK_TG_TOKEN
       - MODESTY_ENDPOINT=http://model_server:6969
-      - MODESTY_TG=/app/data/chats.json
+      - MODESTY_TG_CHATS=/app/data/chats.json
+      - MODESTY_TG_MESSAGES=/app/data/messages.json
     volumes:
       - "./telegram/data/:/app/data/"
     env_file:
-      - .env
+      - telegram/.env
     networks:
       - internal_network
     depends_on:

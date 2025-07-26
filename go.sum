@@ -1,7 +1,4 @@
-github.com/kittenbark/nanodb v0.0.0-20250316121037-fcaf87e49c07 h1:BERF2bBVHGyXKHgbUXVOvy+ywEszdvTGrqJ+ZgXWi+c=
-github.com/kittenbark/nanodb v0.0.0-20250316121037-fcaf87e49c07/go.mod h1:gL10rTGdHYHWhOE//bAfeZXEiy2YiqAyEZtKyn9AcYc=
-github.com/kittenbark/nanodb v0.0.0-20250723145452-9a1d9211ce2f/go.mod h1:gL10rTGdHYHWhOE//bAfeZXEiy2YiqAyEZtKyn9AcYc=
-github.com/kittenbark/nanodb v0.0.0-20250723181214-1b91089d0cd8 h1:KFvtY53YegOSmThUM6UIXJX5wA0+36vHokRsJ7ZowfY=
-github.com/kittenbark/nanodb v0.0.0-20250723181214-1b91089d0cd8/go.mod h1:gL10rTGdHYHWhOE//bAfeZXEiy2YiqAyEZtKyn9AcYc=
+github.com/kittenbark/smoldb v0.0.0-20250726054537-bbe68441364a h1:yzhxZBr9lz3BemtDzgCCz51NMPzbU8rbIDB8YRHECDo=
+github.com/kittenbark/smoldb v0.0.0-20250726054537-bbe68441364a/go.mod h1:2kbNcs3wknNu3MPNqwzLwtnFwLdvmuETalOzIEBKVDk=
 github.com/kittenbark/tg v0.0.0-20250525113243-80f6ee03d695 h1:AhV+ERmktvHxJT1u7zajdv+dYgH6s7eXT0N6D/rsRvY=
 github.com/kittenbark/tg v0.0.0-20250525113243-80f6ee03d695/go.mod h1:n84Rl0h0IaG+pLij7L9PSwErJCbG755uoqf3pLhw4BY=
