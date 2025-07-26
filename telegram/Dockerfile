@@ -7,9 +7,9 @@ WORKDIR /app
 
 COPY go.* ./
 RUN go mod download
-COPY ./telegram ./cmd
+COPY ./telegram ./telegram
 
-RUN go build -o main ./cmd
+RUN go build -o main ./telegram
 
 FROM alpine:${VERSION_ALPINE}
 
